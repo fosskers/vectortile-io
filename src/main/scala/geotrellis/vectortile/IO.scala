@@ -38,9 +38,13 @@ object IO extends App {
     implicit val sc: SparkContext =
       SparkUtils.createLocalSparkContext("local[*]", "VectorTiles IO Test")
 
+    /* Source tile. It has 15 internal Layers and 1207 total geometries.
+     * In its `.mvt` (protobuf) form, it is 40kb.
+     */
+    val bytes: Array[Byte] = Files.readAllBytes(Paths.get("roads.mvt"))
+
     /* RDD Setup */
     val layout = LayoutDefinition(Extent(0, 0, 40960, 40960), TileLayout(10, 10, 4096, 4096))
-    val bytes: Array[Byte] = Files.readAllBytes(Paths.get("roads.mvt"))
     val bounds = KeyBounds(SpatialKey(0, 0), SpatialKey(9, 9))
     val metadata = Megadata(layout, bounds)
 
@@ -49,7 +53,7 @@ object IO extends App {
       y <- 0 to 9
     } yield {
       val key = SpatialKey(x, y)
-      val tile = ProtobufTile.fromBytes(bytes, layout.mapTransform(key))
+      val tile: VectorTile = ProtobufTile.fromBytes(bytes, layout.mapTransform(key))
 
       key -> tile
     }
