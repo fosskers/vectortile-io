@@ -39,16 +39,24 @@ object IO extends App {
       SparkUtils.createLocalSparkContext("local[*]", "VectorTiles IO Test")
 
     /* RDD Setup */
-    val layout = LayoutDefinition(Extent(0, 0, 4096, 4096), TileLayout(1, 1, 4096, 4096))
+    val layout = LayoutDefinition(Extent(0, 0, 40960, 40960), TileLayout(10, 10, 4096, 4096))
     val bytes: Array[Byte] = Files.readAllBytes(Paths.get("roads.mvt"))
-    val key = SpatialKey(0, 0)
-    val tile = ProtobufTile.fromBytes(bytes, layout.mapTransform(key))
-    val bounds = KeyBounds(key, key)
+    val bounds = KeyBounds(SpatialKey(0, 0), SpatialKey(9, 9))
     val metadata = Megadata(layout, bounds)
 
-    /* A singleton RDD with one Tile */
+    val pairs: Seq[(SpatialKey, VectorTile)] = for {
+      x <- 0 to 9
+      y <- 0 to 9
+    } yield {
+      val key = SpatialKey(x, y)
+      val tile = ProtobufTile.fromBytes(bytes, layout.mapTransform(key))
+
+      key -> tile
+    }
+
+    /* A layer of 100 of the same tile arranged in a grid */
     val rdd0: RDD[(SpatialKey, VectorTile)] with Metadata[Megadata[SpatialKey]] =
-      ContextRDD(sc.parallelize(Seq(key -> tile)), metadata)
+      ContextRDD(sc.parallelize(pairs), metadata)
 
     /* S3 IO Config */
     val bucket = "azavea-datahub"
@@ -57,7 +65,7 @@ object IO extends App {
     val writer = new S3LayerWriter(store, bucket, keyPrefix)
     val reader = new S3LayerReader(store)
     val index: KeyIndex[SpatialKey] = ZCurveKeyIndexMethod.createIndex(bounds)
-    val layerId = LayerId("vt-io-test4", 1)
+    val layerId = LayerId("vt-io-test5", 1)
 
     println("Writing to S3...")
 
@@ -72,11 +80,7 @@ object IO extends App {
     val rdd1: RDD[(SpatialKey, VectorTile)] with Metadata[Megadata[SpatialKey]] =
       reader.read[SpatialKey, VectorTile, Megadata[SpatialKey]](layerId)
 
-    /* Compare the layer names of tiles in the RDDs.
-     * Direct comparison of Geometries would likely not be fruitful, given
-     * Floating-point arithmetic differences.
-     */
-    val same: Boolean = rdd0.first()._2.layers.keySet == rdd1.first()._2.layers.keySet
+    val same: Boolean = rdd0.count == rdd1.count
 
     println(s"Done. Same RDD? --> ${same}")
 
