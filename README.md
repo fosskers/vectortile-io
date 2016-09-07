@@ -1,8 +1,8 @@
 VectorTile IO
 =============
 
-This demo writes and reads a layer of one VectorTile to and from S3. In order
-for it to compile, you will need to have run:
+This demo writes and reads a simple layer of 10x10 VectorTiles to and from
+S3. In order for it to compile, you will need to have run:
 
 ```console
 > ./sbt -211 "project vectortile" publish-local
