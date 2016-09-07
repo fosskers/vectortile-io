@@ -15,11 +15,12 @@ import geotrellis.vectortile.spark.Implicits._
 import java.nio.file.{ Files, Paths }
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import spray.json._
 import spray.json.DefaultJsonProtocol._
+import spray.json._
 
 // --- //
 
+/** Minimalist Layer-level metadata. */
 case class Megadata[K: JsonFormat](layout: LayoutDefinition, bounds: KeyBounds[K])
 
 object Megadata {
@@ -60,7 +61,7 @@ object IO extends App {
 
     println("Writing to S3...")
 
-    /* Write to S3 */
+    /* Write to S3. This requires a good handful of implicits to be in scope. */
     writer.write[SpatialKey, VectorTile, Megadata[SpatialKey]](layerId, rdd0, index)
 
     println("Write complete.")
@@ -71,10 +72,15 @@ object IO extends App {
     val rdd1: RDD[(SpatialKey, VectorTile)] with Metadata[Megadata[SpatialKey]] =
       reader.read[SpatialKey, VectorTile, Megadata[SpatialKey]](layerId)
 
+    /* Compare the layer names of tiles in the RDDs.
+     * Direct comparison of Geometries would likely not be fruitful, given
+     * Floating-point arithmetic differences.
+     */
     val same: Boolean = rdd0.first()._2.layers.keySet == rdd1.first()._2.layers.keySet
 
     println(s"Done. Same RDD? --> ${same}")
 
+    /* Safely shut down Spark */
     sc.stop()
   }
 }
