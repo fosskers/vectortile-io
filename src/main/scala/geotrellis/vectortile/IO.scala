@@ -4,7 +4,8 @@ import geotrellis.raster.TileLayout
 import geotrellis.spark._
 import geotrellis.spark.io._
 import geotrellis.spark.io.index.{ KeyIndex, ZCurveKeyIndexMethod }
-import geotrellis.spark.io.s3.{ S3AttributeStore, S3LayerReader, S3LayerWriter }
+import geotrellis.spark.io.hadoop._
+import geotrellis.spark.io.s3._
 import geotrellis.spark.tiling.LayoutDefinition
 import geotrellis.spark.util.SparkUtils
 import geotrellis.util.GetComponent
@@ -62,31 +63,75 @@ object IO extends App {
     val rdd0: RDD[(SpatialKey, VectorTile)] with Metadata[Megadata[SpatialKey]] =
       ContextRDD(sc.parallelize(pairs), metadata)
 
-    /* S3 IO Config */
-    val bucket = "azavea-datahub"
-    val keyPrefix = "catalog"
-    val store = new S3AttributeStore(bucket, keyPrefix)
-    val writer = new S3LayerWriter(store, bucket, keyPrefix)
-    val reader = new S3LayerReader(store)
-    val index: KeyIndex[SpatialKey] = ZCurveKeyIndexMethod.createIndex(bounds)
-    val layerId = LayerId("vt-io-test5", 1)
+    args match {
+      case Array("s3Avro") => { /* S3 IO */
+        /* S3 IO Config */
+        val bucket = "azavea-datahub"
+        val keyPrefix = "catalog"
+        val store = new S3AttributeStore(bucket, keyPrefix)
+        val writer = new S3LayerWriter(store, bucket, keyPrefix)
+        val reader = new S3LayerReader(store)
+        val index: KeyIndex[SpatialKey] = ZCurveKeyIndexMethod.createIndex(bounds)
+        val layerId = LayerId("vt-io-test5", 1)
 
-    println("Writing to S3...")
+        println("Writing to S3...")
 
-    /* Write to S3. This requires a good handful of implicits to be in scope. */
-    writer.write[SpatialKey, VectorTile, Megadata[SpatialKey]](layerId, rdd0, index)
+        /* Write to S3. This requires a good handful of implicits to be in scope. */
+        writer.write[SpatialKey, VectorTile, Megadata[SpatialKey]](layerId, rdd0, index)
 
-    println("Write complete.")
+        println("Write complete.")
 
-    println("Reading from S3...")
+        println("Reading from S3...")
 
-    /* Read from S3 */
-    val rdd1: RDD[(SpatialKey, VectorTile)] with Metadata[Megadata[SpatialKey]] =
-      reader.read[SpatialKey, VectorTile, Megadata[SpatialKey]](layerId)
+        /* Read from S3 */
+        val rdd1: RDD[(SpatialKey, VectorTile)] with Metadata[Megadata[SpatialKey]] =
+          reader.read[SpatialKey, VectorTile, Megadata[SpatialKey]](layerId)
 
-    val same: Boolean = rdd0.count == rdd1.count
+        val same: Boolean = rdd0.count == rdd1.count
 
-    println(s"Done. Same RDD? --> ${same}")
+        println(s"Done. Same RDD? --> ${same}")
+      }
+      case Array("fsMvt") => {
+        println("Saving VectorTiles to filesystem...")
+
+        val rdd1: RDD[(SpatialKey, Array[Byte])] = rdd0.mapValues({
+          case v: ProtobufTile => v.toBytes
+          case _ => throw new IllegalArgumentException("Expected a ProtobufTile")
+        })
+
+        /* Setup for saving to the file system */
+        val template = s"/home/colin/vt-cache/catalog/{name}/{z}/{x}/{y}.mvt"
+        val id = LayerId("sample", 1)
+
+        val keyToPath: SpatialKey => String =
+          SaveToHadoop.spatialKeyToPath(id, template)
+
+        val wrote: Long = rdd1.saveToHadoop(keyToPath)
+
+        println(s"Wrote ${wrote} VectorTiles")
+      }
+      case Array("s3Mvt") => {
+        println("Saving VectorTiles to S3 as .mvt files...")
+
+        val rdd1: RDD[(SpatialKey, Array[Byte])] = rdd0.mapValues({
+          case v: ProtobufTile => v.toBytes
+          case _ => throw new IllegalArgumentException("Expected a ProtobufTile")
+        })
+
+        /* Setup for saving to S3 */
+        val template = "s3://azavea-datahub/catalog/{name}/{z}/{x}/{y}.mvt"
+        val id = LayerId("sample", 1)
+
+        val keyToPath: SpatialKey => String =
+          SaveToS3.spatialKeyToPath(id, template)
+
+        rdd1.saveToS3(keyToPath)
+
+        println("Wrote MVT files to S3.")
+
+      }
+      case _ => println("Usage: run {s3Avro|fsMvt}")
+    }
 
     /* Safely shut down Spark */
     sc.stop()
