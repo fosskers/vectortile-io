@@ -11,7 +11,6 @@ import geotrellis.spark.util.SparkUtils
 import geotrellis.util.GetComponent
 import geotrellis.vector.Extent
 import geotrellis.vectortile.protobuf.ProtobufTile
-import geotrellis.vectortile.spark.Implicits._
 
 import java.nio.file.{ Files, Paths }
 import org.apache.spark.SparkContext

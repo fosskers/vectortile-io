@@ -7,20 +7,12 @@ This demo writes and reads a simple layer of 10x10 VectorTiles in a few ways:
 2. to the filesystem as readily usable `.mvt` files
 3. to S3 as `.mvt` files
 
-In order for this demo to compile, you will need to have run:
-
-```console
-> ./sbt -211 "project vectortile" publish-local
-```
-
-on the current GeoTrellis master branch (unreleased `1.0.0` as of 2016 October 7).
-
 ### Usage
 
 `sbt` is your best bet:
 
 ```console
-> sbt run COMMAND
+> sbt "run COMMAND"
 ```
 
 Where `COMMAND` is one of:
